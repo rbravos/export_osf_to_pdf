@@ -1,3 +1,9 @@
+# PDFs
+*.pdf
+!osfio-export-tool/tests/good-pdfs/*.pdf
+exported_pdfs/
+.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -207,3 +213,4 @@ marimo/_lsp/
 __marimo__/
 .DS_Store
 __pycache__/pdf_generator.cpython-311.pyc
+

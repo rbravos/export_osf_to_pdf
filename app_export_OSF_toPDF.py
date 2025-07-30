@@ -31,6 +31,7 @@ import tempfile
 from datetime import datetime
 
 
+
 #page configuration
 st.set_page_config(page_title="Export & Download OSF project to PDF",
                    #page_icon=":outbox_tray:",
@@ -81,7 +82,7 @@ if project_type == "Private":
         load_dotenv()
         osf_token = os.getenv("OSF_TOKEN")
 
-st.write(osf_token)
+#st.write(osf_token)
 
 # Output folder
 output_dir = "exported_pdfs"
