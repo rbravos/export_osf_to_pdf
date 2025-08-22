@@ -32,60 +32,73 @@ import osfexport
 st.set_page_config(page_title="OSF PDF Export Tool", layout="centered")
 st.title("🔄 OSF Project to PDF")
 
-project_url = st.text_input("📁 Enter OSF Project URL:", placeholder="e.g. https://osf.io/abcde/")
-project_id = osfexport.extract_project_id(project_url) if project_url else ''
-st.write("Project ID: ", project_id)
-
-st.subheader("🔐 OSF Project type")
-project_type = st.radio("Select Project Type:", ["Public", "Private"])
-if project_type == "Private":
-   # Token input
-   st.subheader("🔑 OSF Token")
-   pat = st.text_input("Enter your OSF API token:", type="password")
-else:
-   st.info("Public projects do not require a token.")
-   pat = ''
-
-# --- Form input section ---
+# --- Dev settings and submit button ---
 with st.form("export_form"):   
    dryrun = st.checkbox("Use test/mock data (Dry run)?", value=True)
    usetest = st.checkbox("Use OSF Test API?", value=True)
+   if usetest:
+       api_host = "https://api.test.osf.io/v2"
+   else:
+       api_host = "https://api.osf.io/v2"
    submitted = st.form_submit_button("Export to PDF")
 
+# Choose to export multiple or single project - ask for id if needed
+st.subheader("🔐 OSF Project Type")
+project_groups = st.radio("Choose projects to export:", ["All projects where I'm a Contributor", "Single Project"])
+project_id = ''
+if project_groups == "Single Project":
+    project_url = st.text_input("📁 Enter OSF Project URL or ID:", placeholder="e.g. 'https://osf.io/abcde/' OR 'abcde'")
+    project_id = osfexport.extract_project_id(project_url) if project_url else ''
+    if not project_id:
+        st.info("Leave project URL blank to export all your projects.")
+    else:
+        st.info(f"Exporting Project with ID: {project_id}")
+
+# Request a PAT if getting multiple or a private project
+pat = ''
+if project_groups == "All projects where I'm a Contributor":
+    st.info("To export all projects, you will need to provide a Personal Access Token (PAT).")
+    st.subheader("🔑 OSF Token")
+    pat = st.text_input("Enter your OSF API token:", type="password")
+if project_groups == "Single Project" and project_id != '':
+    if not osfexport.is_public(f'{api_host}/nodes/{project_id}/'):
+        st.info("To export a private project, you will need to provide a Personal Access Token (PAT).")
+        st.subheader("🔑 OSF Token")
+        pat = st.text_input("Enter your OSF API token:", type="password")
+    else:
+        st.info("The project is public, no token is required.")
+
 if submitted:
-   if not pat and not dryrun and project_type == "Private":
+   if not pat and not dryrun:
        st.warning("Please provide a Personal Access Token unless using dry run mode.")
    else:
-       with st.spinner("Generating PDF... Please wait."):
-           try:
-               # Step 1: Get project data
-               projects, root_nodes = osfexport.get_nodes(
-                   pat=pat,
-                   dryrun=dryrun,
-                   project_id=project_id,
-                   usetest=usetest
-               )
-               if not root_nodes:
-                   st.error("No projects found.")
-               else:
-                   root_idx = root_nodes[0]  # Export first root node
+    with st.spinner("Generating PDF... Please wait."):
+        projects, root_nodes = osfexport.get_nodes(
+            pat=pat,
+            dryrun=dryrun,
+            project_id=project_id,
+            usetest=usetest
+        )
+        if not root_nodes:
+            st.error("No projects found.")
+        
+        print(root_nodes)
 
-                   # Step 2: Generate the PDF to a temp folder
-                   with tempfile.TemporaryDirectory() as tmpdir:
-                       pdf_obj, pdf_path = osfexport.write_pdf(
-                           projects,
-                           root_idx=root_idx,
-                           folder=tmpdir
-                       )
+        # Step 2: Generate the PDF to a temp folder
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for root_idx in root_nodes:
+                pdf_obj, pdf_path = osfexport.write_pdf(
+                    projects,
+                    root_idx=root_idx,
+                    folder=tmpdir
+                )
 
-                       # Step 3: Display the download link
-                       with open(pdf_path, "rb") as f:
-                           st.success("✅ PDF Generated!")
-                           st.download_button(
-                               label="📄 Download PDF",
-                               data=f,
-                               file_name=os.path.basename(pdf_path),
-                               mime="application/pdf"
-                           )
-           except Exception as e:
-               st.error(f"❌ An error occurred: {str(e)}")
+                # Step 3: Display the download link
+                with open(pdf_path, "rb") as f:
+                    st.success("✅ PDF Generated!")
+                    st.download_button(
+                        label=f"📄 Download PDF for {projects[root_idx]['title']}",
+                        data=f,
+                        file_name=os.path.basename(pdf_path),
+                        mime="application/pdf"
+                    )
