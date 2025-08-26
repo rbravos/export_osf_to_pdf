@@ -28,6 +28,8 @@ import streamlit as st
 import tempfile
 import os
 import osfexport
+import shutil
+from datetime import datetime
 
 st.set_page_config(page_title="OSF PDF Export Tool", layout="centered")
 st.title("🔄 OSF Project to PDF")
@@ -81,24 +83,30 @@ if submitted:
         )
         if not root_nodes:
             st.error("No projects found.")
-        
-        print(root_nodes)
 
-        # Step 2: Generate the PDF to a temp folder
+        # Step 2: Generate the PDFs to a temp folder
         with tempfile.TemporaryDirectory() as tmpdir:
+            pdf_count = 0  # Track number of files for better user messages
             for root_idx in root_nodes:
                 pdf_obj, pdf_path = osfexport.write_pdf(
                     projects,
                     root_idx=root_idx,
                     folder=tmpdir
                 )
-
-                # Step 3: Display the download link
-                with open(pdf_path, "rb") as f:
-                    st.success("✅ PDF Generated!")
-                    st.download_button(
-                        label=f"📄 Download PDF for {projects[root_idx]['title']}",
-                        data=f,
-                        file_name=os.path.basename(pdf_path),
-                        mime="application/pdf"
-                    )
+                pdf_count += 1
+            
+            # Step 3: Create zip file and display download link
+            # Create a timestamp for the zip file
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            zip_filename = f'osf_projects_exported_{timestamp}'
+            archive = shutil.make_archive(zip_filename, 'zip', base_dir=tmpdir)
+            
+            st.info(f"📦 {pdf_count} PDF{'s' if pdf_count > 1 else ''} generated and compressed")
+            with open(archive, "rb") as file:
+                st.download_button(
+                    label=f"📄 Download {'all PDFs' if pdf_count > 1 else 'PDF'} as ZIP",
+                    data=file,
+                    file_name=f"{zip_filename}.zip",
+                    mime="application/zip"
+                )
+        st.success("✅ PDFs Generated!")
