@@ -26,7 +26,6 @@
 
 import streamlit as st
 import tempfile
-import os
 import osfexport
 import shutil
 from datetime import datetime
@@ -56,22 +55,27 @@ if project_groups == "Single Project":
     else:
         st.info(f"Exporting Project with ID: {project_id}")
 
-# Request a PAT if getting multiple or a private project
+# Request a PAT if getting multiple projects or a private project
 pat = ''
+is_public = True
 if project_groups == "All projects where I'm a Contributor":
     st.info("To export all projects, you will need to provide a Personal Access Token (PAT).")
     st.subheader("🔑 OSF Token")
     pat = st.text_input("Enter your OSF API token:", type="password")
 if project_groups == "Single Project" and project_id != '':
-    if not osfexport.is_public(f'{api_host}/nodes/{project_id}/'):
+    is_public = osfexport.is_public(f'{api_host}/nodes/{project_id}/')
+    if not is_public:
         st.info("To export a private project, you will need to provide a Personal Access Token (PAT).")
         st.subheader("🔑 OSF Token")
         pat = st.text_input("Enter your OSF API token:", type="password")
     else:
         st.info("The project is public, no token is required.")
 
+# Only do exporting if using local JSON files for a test run or exporting a single public project
+is_private_single = project_groups == "Single Project" and not is_public
+is_exporting_all = project_groups == "All projects where I'm a Contributor"
 if submitted:
-   if not pat and not dryrun:
+   if not pat and not dryrun and (is_exporting_all or is_private_single):
        st.warning("Please provide a Personal Access Token unless using dry run mode.")
    else:
     with st.spinner("Generating PDF... Please wait."):
