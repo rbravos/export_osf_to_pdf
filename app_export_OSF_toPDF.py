@@ -33,6 +33,19 @@ from datetime import datetime
 st.set_page_config(page_title="OSF PDF Export Tool", layout="centered")
 st.title("🔄 OSF Project to PDF")
 
+#REMOVE THE SETTING OPTIONS
+st.markdown("""
+    <style>
+        .reportview-container {
+            margin-top: -2em;
+        }
+        #MainMenu {visibility: hidden;}
+        .stDeployButton {display:none;}
+        footer {visibility: hidden;}
+        #stDecoration {display:none;}
+    </style>
+""", unsafe_allow_html=True)
+
 # --- Dev settings and submit button ---
 with st.form("export_form"):   
    dryrun = st.checkbox("Use test/mock data (Dry run)?", value=True)

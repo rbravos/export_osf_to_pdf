@@ -214,3 +214,6 @@ __marimo__/
 .DS_Store
 __pycache__/pdf_generator.cpython-311.pyc
 
+# all zip files and pdf files
+*.zip
+*.pdf
