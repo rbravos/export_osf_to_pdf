@@ -30,6 +30,8 @@ import osfexport
 import shutil
 from datetime import datetime
 
+api_host = "https://api.osf.io/v2"
+
 st.set_page_config(page_title="OSF PDF Export Tool", layout="centered")
 st.title("🔄 OSF Project to PDF")
 
@@ -46,16 +48,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Dev settings and submit button ---
-with st.form("export_form"):   
-   dryrun = st.checkbox("Use test/mock data (Dry run)?", value=True)
-   usetest = st.checkbox("Use OSF Test API?", value=True)
-   if usetest:
-       api_host = "https://api.test.osf.io/v2"
-   else:
-       api_host = "https://api.osf.io/v2"
-   submitted = st.form_submit_button("Export to PDF")
-
 # Choose to export multiple or single project - ask for id if needed
 st.subheader("🔐 OSF Project Type")
 project_groups = st.radio("Choose projects to export:", ["All projects where I'm a Contributor", "Single Project"])
@@ -67,6 +59,7 @@ if project_groups == "Single Project":
         st.info("Leave project URL blank to export all your projects.")
     else:
         st.info(f"Exporting Project with ID: {project_id}")
+        is_id_check_ready = st.button("Check Project is Public", type="secondary")
 
 # Request a PAT if getting multiple projects or a private project
 pat = ''
@@ -75,28 +68,28 @@ if project_groups == "All projects where I'm a Contributor":
     st.info("To export all projects, you will need to provide a Personal Access Token (PAT).")
     st.subheader("🔑 OSF Token")
     pat = st.text_input("Enter your OSF API token:", type="password")
-if project_groups == "Single Project" and project_id != '':
+if project_groups == "Single Project" and project_id != '' and is_id_check_ready:
     is_public = osfexport.is_public(f'{api_host}/nodes/{project_id}/')
     if not is_public:
         st.info("To export a private project, you will need to provide a Personal Access Token (PAT).")
         st.subheader("🔑 OSF Token")
         pat = st.text_input("Enter your OSF API token:", type="password")
     else:
-        st.info("The project is public, no token is required.")
+        st.success("The project is public, no token is required.")
+
+submitted = st.button("Export to PDF", type="secondary")
 
 # Only do exporting if using local JSON files for a test run or exporting a single public project
 is_private_single = project_groups == "Single Project" and not is_public
 is_exporting_all = project_groups == "All projects where I'm a Contributor"
 if submitted:
-   if not pat and not dryrun and (is_exporting_all or is_private_single):
+   if not pat and (is_exporting_all or is_private_single):
        st.warning("Please provide a Personal Access Token unless using dry run mode.")
    else:
     with st.spinner("Generating PDF... Please wait."):
         projects, root_nodes = osfexport.get_nodes(
             pat=pat,
-            dryrun=dryrun,
-            project_id=project_id,
-            usetest=usetest
+            project_id=project_id
         )
         if not root_nodes:
             st.error("No projects found.")
