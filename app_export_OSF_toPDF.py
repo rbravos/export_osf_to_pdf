@@ -29,6 +29,7 @@ import tempfile
 import osfexport
 import shutil
 from datetime import datetime
+import os
 
 api_host = "https://api.osf.io/v2"
 
@@ -97,6 +98,7 @@ if submitted:
         # Step 2: Generate the PDFs to a temp folder
         with tempfile.TemporaryDirectory() as tmpdir:
             pdf_count = 0  # Track number of files for better user messages
+            paths = []
             for root_idx in root_nodes:
                 pdf_obj, pdf_path = osfexport.write_pdf(
                     projects,
@@ -104,19 +106,28 @@ if submitted:
                     folder=tmpdir
                 )
                 pdf_count += 1
+                paths.append(pdf_path)
+                
             
-            # Step 3: Create zip file and display download link
-            # Create a timestamp for the zip file
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            zip_filename = f'osf_projects_exported_{timestamp}'
-            archive = shutil.make_archive(zip_filename, 'zip', base_dir=tmpdir)
-            
-            st.info(f"📦 {pdf_count} PDF{'s' if pdf_count > 1 else ''} generated and compressed")
-            with open(archive, "rb") as file:
-                st.download_button(
-                    label=f"📄 Download {'all PDFs' if pdf_count > 1 else 'PDF'} as ZIP",
-                    data=file,
-                    file_name=f"{zip_filename}.zip",
-                    mime="application/zip"
-                )
+            # Step 3: Create zip file/PDF and display download link
+            if pdf_count > 1:
+                timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+                zip_filename = f'osf_projects_exported_{timestamp}'
+                archive = shutil.make_archive(zip_filename, 'zip', base_dir=tmpdir)
+                st.info(f"📦 {pdf_count} PDF{'s' if pdf_count > 1 else ''} generated and compressed")
+                with open(archive, "rb") as file:
+                    st.download_button(
+                        label=f"📄 Download {'all PDFs' if pdf_count > 1 else 'PDF'} as ZIP",
+                        data=file,
+                        file_name=f"{zip_filename}.zip",
+                        mime="application/zip"
+                    )
+            else:
+                with open(paths[0], "rb") as f:
+                    st.download_button(
+                        label=f"📄 Download PDF for {projects[0]['metadata']['title']}",
+                        data=f,
+                        file_name=os.path.basename(paths[0]),
+                        mime="application/pdf"
+                    )
         st.success("✅ PDFs Generated!")
