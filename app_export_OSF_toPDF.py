@@ -31,7 +31,7 @@ import shutil
 from datetime import datetime
 import os
 
-api_host = "https://api.osf.io/v2"
+API_HOST = "https://api.osf.io/v2"
 PROJECT_GROUPS = ["All projects where I'm a Contributor", "Single Project"]
 pat = ''
 project_id = ''
@@ -39,13 +39,15 @@ project_id = ''
 st.set_page_config(page_title="OSF PDF Export Tool", layout="centered")
 st.title("🔄 OSF Project to PDF")
 
-# Track button clicks and updates in project ID across script executions
-if 'is_public' not in st.session_state:
-    st.session_state.is_public = False
-if 'has_checked_public' not in st.session_state:
-    st.session_state.has_checked_public = False
+# Store if ID changes to ensure form for single projects resets in this case
 if 'current_id' not in st.session_state:
     st.session_state.current_id = ''
+# Store if user has checked visibility to avoid disappearing PAT section
+if 'checked_if_public' not in st.session_state:
+    st.session_state.checked_if_public = False
+# Store result of the is_public check to avoid repeating API calls
+if 'is_public' not in st.session_state:
+    st.session_state.is_public = False
 
 #REMOVE THE SETTING OPTIONS
 st.markdown("""
@@ -62,8 +64,8 @@ st.markdown("""
 
 
 def check_visibility():
-    st.session_state.is_public = osfexport.is_public(f'{api_host}/nodes/{project_id}/')
-    st.session_state.has_checked_public = True
+    st.session_state.is_public = osfexport.is_public(f'{API_HOST}/nodes/{project_id}/')
+    st.session_state.checked_if_public = True
 
 
 # Choose to export multiple or single project - ask for id if needed
@@ -71,13 +73,16 @@ st.subheader("🔐 OSF Project Type")
 project_group = st.radio("Choose projects to export:", PROJECT_GROUPS)
 
 if project_group == PROJECT_GROUPS[1]:
-    project_url = st.text_input("📁 Enter OSF Project URL or ID:", placeholder="e.g. 'https://osf.io/abcde/' OR 'abcde'")
+    project_url = st.text_input(
+        "📁 Enter OSF Project URL or ID:",
+        placeholder="e.g. 'https://osf.io/abcde/' OR 'abcde'"
+    )
     project_id = osfexport.extract_project_id(project_url) if project_url else ''
     if project_id:
         st.info(f"Exporting Project with ID: {project_id}")
-    # Check if ID has changed and update session accordingly
+    # Check if ID has changed and require rechecking visibility if it has
     if st.session_state.current_id != project_id:
-        st.session_state.has_checked_public = False
+        st.session_state.checked_if_public = False
         st.session_state.is_public = False
         st.session_state.current_id = project_id
 
@@ -87,9 +92,8 @@ if project_group == PROJECT_GROUPS[1]:
         on_click=check_visibility
     )
 
-if project_group == PROJECT_GROUPS[1] and st.session_state.has_checked_public:
+if project_group == PROJECT_GROUPS[1] and st.session_state.checked_if_public:
     if not st.session_state.is_public:
-        # Only show this section if user has clicked button to check visibility
         st.info("To export a private project, you will need to provide a Personal Access Token (PAT).")
         st.subheader("🔑 OSF Token")
         pat = st.text_input("Enter your OSF API token:", type="password")
