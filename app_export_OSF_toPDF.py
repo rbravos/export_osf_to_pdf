@@ -64,12 +64,35 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+def show_error_messages(error):
+    if isinstance(error, HTTPError):
+        if error.code == 401:
+            message = """We couldn't authenticate you with the personal access token.
+                If you already have access to the OSF, please check the token is correct."""
+        elif error.code == 404:
+            message = "The project couldn't be found. Please check the URL/project ID is correct."
+        elif error.code == 403:
+            if project_id:
+                message = """Please check you are a contributor for this private project.
+                If you are, does your token have the \"osf.full_read\" permission?"""
+            else:
+                message = """Does your personal access token have the \"osf.full_read\" permission?
+                This is needed to allow access to your projects with this token."""
+        elif error.code == 429:
+            message = "Too many requests to the API, please try again in a few minutes."
+        else:
+            message = f"""Unexpected error HTTP {error.code} - {error.msg}. Please try again later."""
+    else:
+        message = f"Unexpected error connecting to the OSF: {error.reason}. Please try again later."
+    st.error(f"Exporting failed as an error occurred: {message}")
+
+
 def check_visibility():
     try:
         st.session_state.is_public = osfexport.is_public(f'{API_HOST}/nodes/{project_id}/')
         st.session_state.checked_if_public = True
-    except URLError as e:
-        st.error(f"Error connecting to the OSF API. Please try again later. Reason for error: {e.reason}")
+    except (HTTPError, URLError) as e:
+        show_error_messages(e)
 
 
 # Choose to export multiple or single project - ask for id if needed
@@ -147,27 +170,7 @@ def download_export_files(pat='', project_id=''):
             if not root_nodes:
                 st.error("No projects found.")
         except (HTTPError, URLError) as e:
-            st.error("Exporting failed as an error occurred: ")
-            if isinstance(e, HTTPError):
-                if e.code == 401:
-                    message = """We couldn't authenticate you with the personal access token.
-                        If you already have access to the OSF, please check the token is correct."""
-                elif e.code == 404:
-                    message = "The project couldn't be found. Please check the URL/project ID is correct."
-                elif e.code == 403:
-                    if project_id:
-                        message = """Please check you are a contributor for this private project.
-                        If you are, does your token have the \"osf.full_read\" permission?"""
-                    else:
-                        message = """Does your personal access token have the \"osf.full_read\" permission?
-                        This is needed to allow access to your projects with this token."""
-                elif e.code == 429:
-                    message = "Too many requests to the API, please try again in a few minutes."
-                else:
-                    message = f"""Unexpected error: HTTP {e.code}; {e.msg}. Please try again later."""
-            else:
-                message = f"Unexpected error connecting to the OSF: {e.reason}. Please try again later."
-            st.error(message)
+            show_error_messages(e)
             return
 
         # Step 2: Generate the PDFs to a temp folder
