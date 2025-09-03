@@ -64,7 +64,20 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def show_error_messages(error):
+def get_error_message(error):
+    """
+    Choose an error message to show based on the type of error.
+
+    Parameters
+    -----------------
+        error: HTTPError, URLError
+            The actual error show a nicer message for.
+    
+    Returns
+    -----------------
+        String error message to display to the user.
+    """
+    
     if isinstance(error, HTTPError):
         if error.code == 401:
             message = """We couldn't authenticate you with the personal access token.
@@ -84,15 +97,7 @@ def show_error_messages(error):
             message = f"""Unexpected error HTTP {error.code} - {error.msg}. Please try again later."""
     else:
         message = f"Unexpected error connecting to the OSF: {error.reason}. Please try again later."
-    st.error(f"Exporting failed as an error occurred: {message}")
-
-
-def check_visibility():
-    try:
-        st.session_state.is_public = osfexport.is_public(f'{API_HOST}/nodes/{project_id}/')
-        st.session_state.checked_if_public = True
-    except (HTTPError, URLError) as e:
-        show_error_messages(e)
+    return f"Exporting failed as an error occurred: {message}"
 
 
 # Choose to export multiple or single project - ask for id if needed
@@ -112,7 +117,15 @@ if project_group == PROJECT_GROUPS[1]:
         st.session_state.checked_if_public = False
         st.session_state.is_public = False
         st.session_state.current_id = project_id
-
+    
+    def check_visibility():
+        try:
+            st.session_state.is_public = osfexport.is_public(f'{API_HOST}/nodes/{project_id}/')
+            st.session_state.checked_if_public = True
+        except (HTTPError, URLError) as e:
+            msg = get_error_message(e)
+            st.error(msg)
+    
     is_id_check_ready = st.button(
         "Check Project is Public", type="secondary",
         disabled=False if project_id else True,
@@ -170,7 +183,8 @@ def download_export_files(pat='', project_id=''):
             if not root_nodes:
                 st.error("No projects found.")
         except (HTTPError, URLError) as e:
-            show_error_messages(e)
+            msg = get_error_message(e)
+            st.error(msg)
             return
 
         # Step 2: Generate the PDFs to a temp folder
