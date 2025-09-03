@@ -24,14 +24,31 @@
 ## =================================================================================================
 '''
 
+from urllib.error import HTTPError, URLError
 import streamlit as st
 import tempfile
 import osfexport
 import shutil
 from datetime import datetime
+import os
+
+API_HOST = "https://api.osf.io/v2"
+PROJECT_GROUPS = ["All projects where I'm a Contributor", "Single Project"]
+pat = ''
+project_id = ''
 
 st.set_page_config(page_title="OSF PDF Export Tool", layout="centered")
 st.title("🔄 OSF Project to PDF")
+
+# Store if ID changes to ensure form for single projects resets in this case
+if 'current_id' not in st.session_state:
+    st.session_state.current_id = ''
+# Store if user has checked visibility to avoid disappearing PAT section
+if 'checked_if_public' not in st.session_state:
+    st.session_state.checked_if_public = False
+# Store result of the is_public check to avoid repeating API calls
+if 'is_public' not in st.session_state:
+    st.session_state.is_public = False
 
 #REMOVE THE SETTING OPTIONS
 st.markdown("""
@@ -46,64 +63,134 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Dev settings and submit button ---
-with st.form("export_form"):   
-   dryrun = st.checkbox("Use test/mock data (Dry run)?", value=True)
-   usetest = st.checkbox("Use OSF Test API?", value=True)
-   if usetest:
-       api_host = "https://api.test.osf.io/v2"
-   else:
-       api_host = "https://api.osf.io/v2"
-   submitted = st.form_submit_button("Export to PDF")
+
+def get_error_message(error):
+    """
+    Choose an error message to show based on the type of error.
+
+    Parameters
+    -----------------
+        error: HTTPError, URLError
+            The actual error show a nicer message for.
+    
+    Returns
+    -----------------
+        String error message to display to the user.
+    """
+    
+    if isinstance(error, HTTPError):
+        if error.code == 401:
+            message = """We couldn't authenticate you with the personal access token.
+                If you already have access to the OSF, please check the token is correct."""
+        elif error.code == 404:
+            message = "The project couldn't be found. Please check the URL/project ID is correct."
+        elif error.code == 403:
+            if project_id:
+                message = """Please check you are a contributor for this private project.
+                If you are, does your token have the \"osf.full_read\" permission?"""
+            else:
+                message = """Does your personal access token have the \"osf.full_read\" permission?
+                This is needed to allow access to your projects with this token."""
+        elif error.code == 429:
+            message = "Too many requests to the API, please try again in a few minutes."
+        else:
+            message = f"""Unexpected error HTTP {error.code} - {error.msg}. Please try again later."""
+    else:
+        message = f"Unexpected error connecting to the OSF: {error.reason}. Please try again later."
+    return f"Exporting failed as an error occurred: {message}"
+
 
 # Choose to export multiple or single project - ask for id if needed
 st.subheader("🔐 OSF Project Type")
-project_groups = st.radio("Choose projects to export:", ["All projects where I'm a Contributor", "Single Project"])
-project_id = ''
-if project_groups == "Single Project":
-    project_url = st.text_input("📁 Enter OSF Project URL or ID:", placeholder="e.g. 'https://osf.io/abcde/' OR 'abcde'")
-    project_id = osfexport.extract_project_id(project_url) if project_url else ''
-    if not project_id:
-        st.info("Leave project URL blank to export all your projects.")
-    else:
-        st.info(f"Exporting Project with ID: {project_id}")
+project_group = st.radio("Choose projects to export:", PROJECT_GROUPS)
 
-# Request a PAT if getting multiple projects or a private project
-pat = ''
-is_public = True
-if project_groups == "All projects where I'm a Contributor":
-    st.info("To export all projects, you will need to provide a Personal Access Token (PAT).")
-    st.subheader("🔑 OSF Token")
-    pat = st.text_input("Enter your OSF API token:", type="password")
-if project_groups == "Single Project" and project_id != '':
-    is_public = osfexport.is_public(f'{api_host}/nodes/{project_id}/')
-    if not is_public:
+if project_group == PROJECT_GROUPS[1]:
+    project_url = st.text_input(
+        "📁 Enter OSF Project URL or ID:",
+        placeholder="e.g. 'https://osf.io/abcde/' OR 'abcde'"
+    )
+    project_id = osfexport.extract_project_id(project_url) if project_url else ''
+    if project_id:
+        st.info(f"Exporting Project with ID: {project_id}")
+    # Check if ID has changed and require rechecking visibility if it has
+    if st.session_state.current_id != project_id:
+        st.session_state.checked_if_public = False
+        st.session_state.is_public = False
+        st.session_state.current_id = project_id
+    
+    def check_visibility():
+        try:
+            st.session_state.is_public = osfexport.is_public(f'{API_HOST}/nodes/{project_id}/')
+            st.session_state.checked_if_public = True
+        except (HTTPError, URLError) as e:
+            msg = get_error_message(e)
+            st.error(msg)
+    
+    is_id_check_ready = st.button(
+        "Check Project is Public", type="secondary",
+        disabled=False if project_id else True,
+        on_click=check_visibility
+    )
+
+if project_group == PROJECT_GROUPS[1] and st.session_state.checked_if_public:
+    if not st.session_state.is_public:
         st.info("To export a private project, you will need to provide a Personal Access Token (PAT).")
         st.subheader("🔑 OSF Token")
         pat = st.text_input("Enter your OSF API token:", type="password")
     else:
-        st.info("The project is public, no token is required.")
+        st.success("The project is public, no token is required.")
 
-# Only do exporting if using local JSON files for a test run or exporting a single public project
-is_private_single = project_groups == "Single Project" and not is_public
-is_exporting_all = project_groups == "All projects where I'm a Contributor"
-if submitted:
-   if not pat and not dryrun and (is_exporting_all or is_private_single):
-       st.warning("Please provide a Personal Access Token unless using dry run mode.")
-   else:
+if project_group == PROJECT_GROUPS[0]:
+    st.info("To export all projects, you will need to provide a Personal Access Token (PAT).")
+    st.subheader("🔑 OSF Token")
+    pat = st.text_input("Enter your OSF API token:", type="password")
+
+# Valid states for exporting:
+# Export multiple AND PAT given
+# Export single AND public
+# Export single AND not public and PAT given
+valid_export_all = project_group == PROJECT_GROUPS[0] and pat
+valid_export_public = project_group == PROJECT_GROUPS[1] and st.session_state.is_public
+valid_export_private = project_group == PROJECT_GROUPS[1] and pat
+valid_export_state = valid_export_all or valid_export_public or valid_export_private
+submitted = st.button(
+    "Export to PDF", type="primary",
+    disabled=False if valid_export_state else True
+)
+
+def download_export_files(pat='', project_id=''):
+    """
+    Try to download export files and handle any errors that occur.
+
+    Parameters
+    ----------------------
+        - pat: str
+            Personal Access Token to use for authentication.
+        - project_id: str
+            Optional ID of a project to export.
+    
+    Returns
+    ----------------------
+        None
+    """
+    
     with st.spinner("Generating PDF... Please wait."):
-        projects, root_nodes = osfexport.get_nodes(
-            pat=pat,
-            dryrun=dryrun,
-            project_id=project_id,
-            usetest=usetest
-        )
-        if not root_nodes:
-            st.error("No projects found.")
+        try:
+            projects, root_nodes = osfexport.get_nodes(
+                pat=pat,
+                project_id=project_id
+            )
+            if not root_nodes:
+                st.error("No projects found.")
+        except (HTTPError, URLError) as e:
+            msg = get_error_message(e)
+            st.error(msg)
+            return
 
         # Step 2: Generate the PDFs to a temp folder
         with tempfile.TemporaryDirectory() as tmpdir:
             pdf_count = 0  # Track number of files for better user messages
+            paths = []
             for root_idx in root_nodes:
                 pdf_obj, pdf_path = osfexport.write_pdf(
                     projects,
@@ -111,19 +198,31 @@ if submitted:
                     folder=tmpdir
                 )
                 pdf_count += 1
+                paths.append(pdf_path)
+                
             
-            # Step 3: Create zip file and display download link
-            # Create a timestamp for the zip file
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            zip_filename = f'osf_projects_exported_{timestamp}'
-            archive = shutil.make_archive(zip_filename, 'zip', base_dir=tmpdir)
-            
-            st.info(f"📦 {pdf_count} PDF{'s' if pdf_count > 1 else ''} generated and compressed")
-            with open(archive, "rb") as file:
-                st.download_button(
-                    label=f"📄 Download {'all PDFs' if pdf_count > 1 else 'PDF'} as ZIP",
-                    data=file,
-                    file_name=f"{zip_filename}.zip",
-                    mime="application/zip"
-                )
+            # Step 3: Create zip file/PDF and display download link
+            if pdf_count > 1:
+                timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+                zip_filename = f'osf_projects_exported_{timestamp}'
+                archive = shutil.make_archive(zip_filename, 'zip', root_dir=tmpdir)
+                st.info(f"📦 {pdf_count} PDF{'s' if pdf_count > 1 else ''} generated and compressed")
+                with open(archive, "rb") as file:
+                    st.download_button(
+                        label=f"📄 Download {'all PDFs' if pdf_count > 1 else 'PDF'} as ZIP",
+                        data=file,
+                        file_name=f"{zip_filename}.zip",
+                        mime="application/zip"
+                    )
+            else:
+                with open(paths[0], "rb") as f:
+                    st.download_button(
+                        label=f"📄 Download PDF for {projects[0]['metadata']['title']}",
+                        data=f,
+                        file_name=os.path.basename(paths[0]),
+                        mime="application/pdf"
+                    )
         st.success("✅ PDFs Generated!")
+
+if submitted:
+    download_export_files(pat=pat, project_id=project_id)
