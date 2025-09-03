@@ -24,6 +24,7 @@
 ## =================================================================================================
 '''
 
+from urllib.error import HTTPError, URLError
 import streamlit as st
 import tempfile
 import osfexport
@@ -64,8 +65,11 @@ st.markdown("""
 
 
 def check_visibility():
-    st.session_state.is_public = osfexport.is_public(f'{API_HOST}/nodes/{project_id}/')
-    st.session_state.checked_if_public = True
+    try:
+        st.session_state.is_public = osfexport.is_public(f'{API_HOST}/nodes/{project_id}/')
+        st.session_state.checked_if_public = True
+    except URLError as e:
+        st.error(f"Error connecting to the OSF API. Please try again later. Reason for error: {e.reason}")
 
 
 # Choose to export multiple or single project - ask for id if needed
