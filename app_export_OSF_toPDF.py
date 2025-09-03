@@ -32,14 +32,20 @@ from datetime import datetime
 import os
 
 api_host = "https://api.osf.io/v2"
+PROJECT_GROUPS = ["All projects where I'm a Contributor", "Single Project"]
+pat = ''
+project_id = ''
 
 st.set_page_config(page_title="OSF PDF Export Tool", layout="centered")
 st.title("🔄 OSF Project to PDF")
 
-# Track if single project had visibility checked across page refreshes
-if 'has_status_checked' not in st.session_state:
-    st.session_state.has_status_checked = False
-st.write(st.session_state)
+# Track button clicks and updates in project ID across script executions
+if 'is_public' not in st.session_state:
+    st.session_state.is_public = False
+if 'has_checked_public' not in st.session_state:
+    st.session_state.has_checked_public = False
+if 'current_id' not in st.session_state:
+    st.session_state.current_id = ''
 
 #REMOVE THE SETTING OPTIONS
 st.markdown("""
@@ -54,54 +60,61 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+
+def check_visibility():
+    st.session_state.is_public = osfexport.is_public(f'{api_host}/nodes/{project_id}/')
+    st.session_state.has_checked_public = True
+
+
 # Choose to export multiple or single project - ask for id if needed
 st.subheader("🔐 OSF Project Type")
-project_groups = st.radio("Choose projects to export:", ["All projects where I'm a Contributor", "Single Project"])
+project_group = st.radio("Choose projects to export:", PROJECT_GROUPS)
 
-project_id = ''
-is_public = False
-if project_groups == "Single Project":
+if project_group == PROJECT_GROUPS[1]:
     project_url = st.text_input("📁 Enter OSF Project URL or ID:", placeholder="e.g. 'https://osf.io/abcde/' OR 'abcde'")
     project_id = osfexport.extract_project_id(project_url) if project_url else ''
     if project_id:
         st.info(f"Exporting Project with ID: {project_id}")
-    # Update session state on click
+    # Check if ID has changed and update session accordingly
+    if st.session_state.current_id != project_id:
+        st.session_state.has_checked_public = False
+        st.session_state.is_public = False
+        st.session_state.current_id = project_id
+
     is_id_check_ready = st.button(
         "Check Project is Public", type="secondary",
-        key="has_status_checked",
-        disabled=False if project_id else True
+        disabled=False if project_id else True,
+        on_click=check_visibility
     )
-    if is_id_check_ready:
-        is_public = osfexport.is_public(f'{api_host}/nodes/{project_id}/')
 
-
-# Request a PAT if getting multiple projects or a private project
-pat = ''
-
-if project_groups == "All projects where I'm a Contributor":
-    st.info("To export all projects, you will need to provide a Personal Access Token (PAT).")
-    st.subheader("🔑 OSF Token")
-    pat = st.text_input("Enter your OSF API token:", type="password")
-
-# Only show this section if user has clicked button to check visibility
-# i.e. when session state variable is True
-if project_groups == "Single Project" and st.session_state.has_status_checked:
-    if not is_public:
+if project_group == PROJECT_GROUPS[1] and st.session_state.has_checked_public:
+    if not st.session_state.is_public:
+        # Only show this section if user has clicked button to check visibility
         st.info("To export a private project, you will need to provide a Personal Access Token (PAT).")
         st.subheader("🔑 OSF Token")
         pat = st.text_input("Enter your OSF API token:", type="password")
     else:
         st.success("The project is public, no token is required.")
 
-submitted = st.button("Export to PDF", type="secondary")
+if project_group == PROJECT_GROUPS[0]:
+    st.info("To export all projects, you will need to provide a Personal Access Token (PAT).")
+    st.subheader("🔑 OSF Token")
+    pat = st.text_input("Enter your OSF API token:", type="password")
 
-# Only do exporting if using local JSON files for a test run or exporting a single public project
-is_private_single = project_groups == "Single Project" and not is_public
-is_exporting_all = project_groups == "All projects where I'm a Contributor"
+# Valid states for exporting:
+# Export multiple AND PAT given
+# Export single AND public
+# Export single AND not public and PAT given
+valid_export_all = project_group == PROJECT_GROUPS[0] and pat
+valid_export_public = project_group == PROJECT_GROUPS[1] and st.session_state.is_public
+valid_export_private = project_group == PROJECT_GROUPS[1] and pat
+valid_export_state = valid_export_all or valid_export_public or valid_export_private
+submitted = st.button(
+    "Export to PDF", type="secondary",
+    disabled=False if valid_export_state else True
+)
+
 if submitted:
-   if not pat and (is_exporting_all or is_private_single):
-       st.warning("Please provide a Personal Access Token unless using dry run mode.")
-   else:
     with st.spinner("Generating PDF... Please wait."):
         projects, root_nodes = osfexport.get_nodes(
             pat=pat,
