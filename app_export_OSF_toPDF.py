@@ -36,6 +36,11 @@ api_host = "https://api.osf.io/v2"
 st.set_page_config(page_title="OSF PDF Export Tool", layout="centered")
 st.title("🔄 OSF Project to PDF")
 
+# Track if single project had visibility checked across page refreshes
+if 'has_status_checked' not in st.session_state:
+    st.session_state.has_status_checked = False
+st.write(st.session_state)
+
 #REMOVE THE SETTING OPTIONS
 st.markdown("""
     <style>
@@ -52,25 +57,35 @@ st.markdown("""
 # Choose to export multiple or single project - ask for id if needed
 st.subheader("🔐 OSF Project Type")
 project_groups = st.radio("Choose projects to export:", ["All projects where I'm a Contributor", "Single Project"])
+
 project_id = ''
+is_public = False
 if project_groups == "Single Project":
     project_url = st.text_input("📁 Enter OSF Project URL or ID:", placeholder="e.g. 'https://osf.io/abcde/' OR 'abcde'")
     project_id = osfexport.extract_project_id(project_url) if project_url else ''
-    if not project_id:
-        st.info("Leave project URL blank to export all your projects.")
-    else:
+    if project_id:
         st.info(f"Exporting Project with ID: {project_id}")
-        is_id_check_ready = st.button("Check Project is Public", type="secondary")
+    # Update session state on click
+    is_id_check_ready = st.button(
+        "Check Project is Public", type="secondary",
+        key="has_status_checked",
+        disabled=False if project_id else True
+    )
+    if is_id_check_ready:
+        is_public = osfexport.is_public(f'{api_host}/nodes/{project_id}/')
+
 
 # Request a PAT if getting multiple projects or a private project
 pat = ''
-is_public = True
+
 if project_groups == "All projects where I'm a Contributor":
     st.info("To export all projects, you will need to provide a Personal Access Token (PAT).")
     st.subheader("🔑 OSF Token")
     pat = st.text_input("Enter your OSF API token:", type="password")
-if project_groups == "Single Project" and project_id != '' and is_id_check_ready:
-    is_public = osfexport.is_public(f'{api_host}/nodes/{project_id}/')
+
+# Only show this section if user has clicked button to check visibility
+# i.e. when session state variable is True
+if project_groups == "Single Project" and st.session_state.has_status_checked:
     if not is_public:
         st.info("To export a private project, you will need to provide a Personal Access Token (PAT).")
         st.subheader("🔑 OSF Token")
