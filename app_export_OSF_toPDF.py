@@ -188,7 +188,7 @@ def download_export_files(pat='', project_id=''):
             if pdf_count > 1:
                 timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
                 zip_filename = f'osf_projects_exported_{timestamp}'
-                archive = shutil.make_archive(zip_filename, 'zip', base_dir=tmpdir)
+                archive = shutil.make_archive(zip_filename, 'zip', root_dir=tmpdir)
                 st.info(f"📦 {pdf_count} PDF{'s' if pdf_count > 1 else ''} generated and compressed")
                 with open(archive, "rb") as file:
                     st.download_button(
