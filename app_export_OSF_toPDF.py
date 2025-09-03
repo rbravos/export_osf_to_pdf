@@ -122,14 +122,53 @@ submitted = st.button(
     disabled=False if valid_export_state else True
 )
 
-if submitted:
+def download_export_files(pat='', project_id=''):
+    """
+    Try to download export files and handle any errors that occur.
+
+    Parameters
+    ----------------------
+        - pat: str
+            Personal Access Token to use for authentication.
+        - project_id: str
+            Optional ID of a project to export.
+    
+    Returns
+    ----------------------
+        None
+    """
+    
     with st.spinner("Generating PDF... Please wait."):
-        projects, root_nodes = osfexport.get_nodes(
-            pat=pat,
-            project_id=project_id
-        )
-        if not root_nodes:
-            st.error("No projects found.")
+        try:
+            projects, root_nodes = osfexport.get_nodes(
+                pat=pat,
+                project_id=project_id
+            )
+            if not root_nodes:
+                st.error("No projects found.")
+        except (HTTPError, URLError) as e:
+            st.error("Exporting failed as an error occurred: ")
+            if isinstance(e, HTTPError):
+                if e.code == 401:
+                    message = """We couldn't authenticate you with the personal access token.
+                        If you already have access to the OSF, please check the token is correct."""
+                elif e.code == 404:
+                    message = "The project couldn't be found. Please check the URL/project ID is correct."
+                elif e.code == 403:
+                    if project_id:
+                        message = """Please check you are a contributor for this private project.
+                        If you are, does your token have the \"osf.full_read\" permission?"""
+                    else:
+                        message = """Does your personal access token have the \"osf.full_read\" permission?
+                        This is needed to allow access to your projects with this token."""
+                elif e.code == 429:
+                    message = "Too many requests to the API, please try again in a few minutes."
+                else:
+                    message = f"""Unexpected error: HTTP {e.code}; {e.msg}. Please try again later."""
+            else:
+                message = f"Unexpected error connecting to the OSF: {e.reason}. Please try again later."
+            st.error(message)
+            return
 
         # Step 2: Generate the PDFs to a temp folder
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -167,3 +206,6 @@ if submitted:
                         mime="application/pdf"
                     )
         st.success("✅ PDFs Generated!")
+
+if submitted:
+    download_export_files(pat=pat, project_id=project_id)
