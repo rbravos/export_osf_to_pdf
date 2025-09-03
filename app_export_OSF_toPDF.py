@@ -114,7 +114,7 @@ valid_export_public = project_group == PROJECT_GROUPS[1] and st.session_state.is
 valid_export_private = project_group == PROJECT_GROUPS[1] and pat
 valid_export_state = valid_export_all or valid_export_public or valid_export_private
 submitted = st.button(
-    "Export to PDF", type="secondary",
+    "Export to PDF", type="primary",
     disabled=False if valid_export_state else True
 )
 
