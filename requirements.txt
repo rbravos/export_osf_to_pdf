@@ -6,4 +6,4 @@ pillow==11.3.0
 pytz==2025.2
 letter==0.5
 reportlab==4.4.2
-osfexport==0.2.1
+osfexport==0.2.2
