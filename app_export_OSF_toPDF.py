@@ -188,7 +188,7 @@ def download_export_files(pat='', project_id=''):
             return
 
         # Step 2: Generate the PDFs to a temp folder
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(delete=True) as tmpdir:
             pdf_count = 0  # Track number of files for better user messages
             paths = []
             for root_idx in root_nodes:
